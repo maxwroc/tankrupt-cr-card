@@ -1,0 +1,183 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color-scheme: light;
+  --primary-color: #1976d2;
+  --text-primary-color: #fff;
+  --primary-text-color: #202124;
+  --secondary-text-color: #616161;
+  --card-background-color: #fff;
+  --ha-card-background: var(--card-background-color);
+  --divider-color: #c3c9d0;
+  --error-color: #b71c1c;
+  --success-color: #287d36;
+  --warning-color: #946000;
+  --primary-background-color: #f1f3f5;
+  --secondary-background-color: #e7ebf0;
+  --dialog-backdrop-color: #0008;
+  --mdc-dialog-scrim-color: var(--dialog-backdrop-color);
+  --ha-dialog-surface-background: var(--card-background-color);
+  --dialog-box-shadow: 0 12px 40px #0005;
+  --ha-card-border-radius: 16px;
+  --ha-card-border-color: var(--divider-color);
+  --ha-card-border-width: 1px;
+  --ha-card-box-shadow: none;
+  --disabled-text-color: #747b83;
+  --mdc-theme-primary: var(--primary-color);
+  --mdc-theme-on-primary: var(--text-primary-color);
+  --mdc-theme-surface: var(--card-background-color);
+  --mdc-theme-on-surface: var(--primary-text-color);
+  --mdc-theme-error: var(--error-color);
+  --state-active-color: var(--primary-color);
+  background: var(--primary-background-color);
+  color: var(--primary-text-color);
+}
+:root.dark {
+  color-scheme: dark;
+  --primary-color: #80baff;
+  --text-primary-color: #14191f;
+  --primary-text-color: #edf1f5;
+  --secondary-text-color: #afb7c0;
+  --card-background-color: #222832;
+  --divider-color: #586573;
+  --error-color: #ff8a80;
+  --success-color: #81c784;
+  --warning-color: #ffd180;
+  --primary-background-color: #14191f;
+  --secondary-background-color: #303946;
+  --disabled-text-color: #9aa5b1;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  max-width: 1320px;
+  margin: 24px auto;
+  padding: 0 16px;
+}
+h1 {
+  margin-bottom: 8px;
+}
+h2 {
+  font-size: 1.2rem;
+}
+p {
+  line-height: 1.5;
+}
+button,
+select,
+textarea {
+  font: inherit;
+  color: var(--primary-text-color);
+  background: var(--card-background-color);
+  padding: 8px;
+  border: 1px solid var(--divider-color);
+  border-radius: 6px;
+}
+button {
+  cursor: pointer;
+}
+:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 3px;
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 20px 0;
+  align-items: center;
+}
+.controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+.controls select {
+  min-width: 0;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) minmax(360px, 1.2fr);
+  gap: 24px;
+  align-items: start;
+}
+.configuration {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--divider-color);
+  border-radius: 12px;
+  background: var(--card-background-color);
+}
+[role='tablist'] {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+[role='tab'] {
+  flex: 1;
+}
+[role='tab'][aria-selected='true'] {
+  border-color: var(--primary-color);
+  box-shadow: inset 0 -3px var(--primary-color);
+}
+[hidden] {
+  display: none !important;
+}
+#yaml-panel > label {
+  display: block;
+  margin-bottom: 8px;
+}
+textarea {
+  width: 100%;
+  min-height: 650px;
+  resize: vertical;
+  font:
+    0.88rem/1.55 ui-monospace,
+    monospace;
+  tab-size: 2;
+}
+.preview-pane {
+  min-width: 0;
+  position: sticky;
+  top: 16px;
+}
+#preview {
+  width: 100%;
+  max-width: calc(var(--card-width, 480px) + 16px);
+  margin-inline: auto;
+  padding: 8px;
+}
+ha-card {
+  display: block;
+  border: 1px solid var(--divider-color);
+  border-radius: var(--ha-card-border-radius);
+  background: var(--card-background-color);
+}
+#status,
+#preview-status,
+#yaml-help,
+.note {
+  color: var(--secondary-text-color);
+  font-size: 0.9rem;
+}
+#config-error,
+#boot-error {
+  color: var(--error-color);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 800px) {
+  .workspace {
+    display: flex;
+    flex-direction: column-reverse;
+  }
+  .workspace > section {
+    width: 100%;
+  }
+  .preview-pane {
+    position: static;
+  }
+  textarea {
+    min-height: 440px;
+  }
+}

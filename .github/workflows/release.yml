@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Validate, build and attach card
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Normalize release version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const version = process.env.RELEASE_TAG.replace(/^v/, '');
+          const identifier = '(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)';
+          const semver = new RegExp(`^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-${identifier}(?:\\.${identifier})*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$`);
+          if (!semver.test(version)) throw new Error(`Invalid release tag: ${process.env.RELEASE_TAG}`);
+          for (const path of ['package.json', 'package-lock.json']) {
+            const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+            data.version = version;
+            if (data.packages?.['']) data.packages[''].version = version;
+            fs.writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
+          }
+          const path = 'src/const.ts';
+          const source = fs.readFileSync(path, 'utf8');
+          const pattern = /^export const VERSION = ['"][^'"]*['"];$/m;
+          if (!pattern.test(source)) throw new Error('VERSION declaration not found');
+          fs.writeFileSync(path, source.replace(pattern, `export const VERSION = '${version}';`));
+          console.log(`Building Tankrupt ${version}`);
+          NODE
+      - run: npm run lint
+      - run: npm run type-check
+      - run: npm run test:coverage
+      - run: npm run build
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" dist/tankrupt-cr-card.js --clobber
+
+  hacs:
+    name: HACS validation
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      # HACS resolves the bundle from the release asset uploaded above.
+      - uses: hacs/action@main
+        with:
+          category: plugin
