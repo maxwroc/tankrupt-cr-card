@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fuel costs — editor demo</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Fuel costs</h1>
+      <p>
+        Configure on the left, preview on the right. Synthetic, in-memory Custom Records: no Home
+        Assistant connection and no real writes.
+      </p>
+    </header>
+    <section class="controls" aria-label="Demo environment">
+      <label><input id="dark" type="checkbox" /> Dark theme</label>
+      <label>
+        Card width
+        <select id="width">
+          <option value="360">360 px</option>
+          <option value="480" selected>480 px</option>
+          <option value="600">600 px</option>
+        </select></label
+      >
+      <label
+        >Configuration preset
+        <select id="scenario">
+          <option value="mixed">Petrol, diesel and EV</option>
+          <option value="ev">Single EV / per 100 kWh</option>
+          <option value="hybrid">Single hybrid</option>
+          <option value="unassigned">No configured vehicles</option>
+        </select></label
+      >
+      <span id="preset-action"></span>
+      <label
+        >Backend
+        <select id="backend">
+          <option value="normal">650 retained records</option>
+          <option value="short">Short history — one purchase</option>
+          <option value="zero">Real zero-cost purchases</option>
+          <option value="equal">Equal-value purchases</option>
+          <option value="empty">Empty history</option>
+          <option value="error">API failure</option>
+          <option value="expired">Expired history cursor</option>
+        </select></label
+      >
+      <span id="reset-action"></span>
+    </section>
+    <p id="status" aria-live="polite"></p>
+    <p id="boot-error" role="alert" hidden></p>
+    <main class="workspace">
+      <section class="configuration" aria-label="Card configuration">
+        <div role="tablist" aria-label="Configuration editor">
+          <button
+            class="action-control normal"
+            id="yaml-tab"
+            role="tab"
+            aria-controls="yaml-panel"
+            aria-selected="true"
+          >
+            YAML
+          </button>
+          <button
+            class="action-control normal"
+            id="ui-tab"
+            role="tab"
+            aria-controls="ui-panel"
+            aria-selected="false"
+            tabindex="-1"
+          >
+            UI
+          </button>
+        </div>
+        <p id="config-error" role="alert" hidden></p>
+        <section id="yaml-panel" role="tabpanel" aria-labelledby="yaml-tab">
+          <label for="yaml">Card YAML</label>
+          <textarea
+            id="yaml"
+            spellcheck="false"
+            aria-describedby="yaml-help config-error"
+          ></textarea>
+          <p id="yaml-help">
+            Comments and advanced settings are preserved during UI edits. Fix an invalid draft
+            before using the UI. Loading a preset explicitly replaces the draft.
+          </p>
+        </section>
+        <section id="ui-panel" role="tabpanel" aria-labelledby="ui-tab" hidden>
+          <div id="editor"></div>
+        </section>
+      </section>
+      <section class="preview-pane" aria-labelledby="preview-title">
+        <h2 id="preview-title">Card preview</h2>
+        <p id="preview-status" role="status">Live preview</p>
+        <div id="preview"></div>
+        <p class="note">
+          Only Add and History belong to the card. Theme, width, fixtures and configuration controls
+          are demo tools. Reload or reset to discard synthetic writes.
+        </p>
+      </section>
+    </main>
+    <script type="module" src="./demo.js"></script>
+  </body>
+</html>
