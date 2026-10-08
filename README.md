@@ -34,9 +34,48 @@ The repository intentionally does not contain a generated `dist/` bundle.
 
 ## Create the database record type
 
-Create a record type **manually** in Custom Records with logical ID
-`fuel_purchases`. Use the logical record-type ID, not a Home Assistant entity ID,
-table name or integration entry ID.
+In **Settings → Devices & Services → Custom Records**, choose **Add record type**.
+Enter **Fuel purchases** as the name (which generates the logical ID
+`fuel_purchases`), then paste this YAML into the optional **Field definition** box
+and submit:
+
+```yaml
+fields:
+  - key: vehicle_id
+    label: Vehicle ID
+    type: text
+    required: true
+  - key: fuel_type
+    label: Fuel type
+    type: text
+    required: true
+  - key: quantity
+    label: Quantity
+    type: number
+    required: true
+  - key: unit_price
+    label: Unit price
+    type: number
+    required: true
+  - key: total_cost
+    label: Total cost
+    type: number
+    required: true
+  - key: vehicle_name
+    label: Vehicle name
+    type: text
+    required: false
+```
+
+This creates the five required fields and the optional `vehicle_name` field.
+Only fields are imported: enter the name separately and review retention and
+maximum-record settings separately. This is for creating a new record type, not
+updating an existing schema or importing purchase history.
+
+The paste workflow requires a Custom Records version with the **Field definition**
+option. If it is unavailable, update the integration or create the fields manually
+using the table below. Use the logical record-type ID in the card, not a Home
+Assistant entity ID, table name or integration entry ID.
 
 | Field key      | Backend type | Required | Meaning                                                                  |
 | -------------- | ------------ | -------- | ------------------------------------------------------------------------ |
@@ -54,12 +93,13 @@ Tankrupt validates the fuel identifiers itself.
 
 **Do not add currency, unit, input-unit or price-basis fields.** These are static
 card settings, not record metadata. The stored `fuel_type` determines the canonical
-dimension. There is no schema importer or automatic provisioning in this card.
+dimension. Field-definition import is provided by Custom Records; this card does
+not import schemas or automatically provision record types.
 
 ### Setup checklist
 
-1. Create the five required fields with the exact types above.
-2. Optionally add `vehicle_name` as an optional text field.
+1. Create `fuel_purchases` using the definition above, or add its fields manually.
+2. Verify the five required fields and their exact types; `vehicle_name` is optional.
 3. Check retention and maximum-record settings before adding history.
 4. Configure the logical record type in the card.
 5. Check HA's currency and time zone, or set a card currency override.
@@ -402,8 +442,8 @@ for the data still retained by Custom Records.
 ## Corrections and limitations
 
 Confirm deletion of the identified transaction, then add a replacement to correct
-it. There is **no in-place update API**, undo guarantee, schema import or automatic
-migration. A failed delete remains visible and should not be treated as success.
+it. This card provides **no in-place update API**, undo guarantee, schema import or
+automatic migration. A failed delete remains visible and should not be treated as success.
 Relevant integration update events refresh summaries, charts and schema checks
 across cards, but do not replace an already open history list.
 
@@ -449,8 +489,8 @@ listing, direction-bound cursors and the finite WebSocket limits. Add/delete/eve
 or reset to discard synthetic changes. Demo-only HA form/dialog adapters use
 native browser controls and a modal `<dialog>` to exercise the same History
 component. They are **not live-HA verification**. A real HA smoke test is still
-needed for dashboard resources, editor/native modal compatibility, manual schema
-creation, focus/back behavior, live updates and themes.
+needed for dashboard resources, editor/native modal compatibility, schema creation
+through import or manual setup, focus/back behavior, live updates and themes.
 
 TypeScript is strict, targets ES2021 and uses Lit's legacy decorators. Rollup and
 esbuild produce the single production ES-module bundle at `dist/tankrupt-cr-card.js`; the CommonJS
