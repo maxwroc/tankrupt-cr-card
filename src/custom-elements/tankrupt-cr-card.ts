@@ -195,7 +195,7 @@ export class TankruptCard extends LitElement {
   }
 
   static getStubConfig(): CardConfig {
-    return { type: `custom:${CARD_TAG}`, record_type: 'fuel_purchases' };
+    return { type: `custom:${CARD_TAG}`, record_type: '' };
   }
 
   setConfig(config: CardConfig): void {

@@ -84,6 +84,12 @@ function vehicle(value: Vehicle): Vehicle {
 
 export function normalizeConfig(config: CardConfig): ResolvedConfig {
   if (!config || typeof config !== 'object') fail('Card configuration is required.');
+  if (
+    config.record_type === undefined ||
+    (typeof config.record_type === 'string' && !config.record_type.trim())
+  ) {
+    fail('Select a record type in the card editor or set record_type in YAML.');
+  }
   const record_type = validKey(config.record_type, 'record_type');
   if (config.title !== undefined && typeof config.title !== 'string') {
     fail('title must be a string.');

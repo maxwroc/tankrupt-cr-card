@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import { TankruptCardEditor } from '../src/custom-elements/tankrupt-card-editor';
+import { TankruptCard } from '../src/custom-elements/tankrupt-cr-card';
 import type { Hass } from '../src/types';
 
 const hass = (): Hass => ({
@@ -20,6 +21,28 @@ async function flush(element: TankruptCardEditor) {
 afterEach(() => document.body.replaceChildren());
 
 describe('visual editor', () => {
+  it('does not preselect the only discovered record type for a new card', async () => {
+    const element = new TankruptCardEditor();
+    element.hass = hass();
+    element.setConfig(TankruptCard.getStubConfig());
+    const changed = vi.fn();
+    element.addEventListener('config-changed', changed);
+    document.body.append(element);
+    await flush(element);
+    const form = element.shadowRoot!.querySelector('ha-form') as HTMLElement & {
+      data: Record<string, unknown>;
+      schema: { name: string; selector: { select: { options: unknown[] } } }[];
+    };
+    expect(element.hass.connection.sendMessagePromise).toHaveBeenCalledExactlyOnceWith({
+      type: 'custom_records/list_record_types',
+    });
+    expect(form.schema[0].selector.select.options).toHaveLength(1);
+    expect(form.schema.map((field) => field.name)).toEqual(['record_type']);
+    expect(form.data.record_type).toBe('');
+    expect(element.shadowRoot!.querySelector('.record-setup')).not.toBeNull();
+    expect(changed).not.toHaveBeenCalled();
+  });
+
   it.each(['', '   '])('shows only record setup when the record type is %j', async (recordType) => {
     const element = new TankruptCardEditor();
     element.hass = hass();
