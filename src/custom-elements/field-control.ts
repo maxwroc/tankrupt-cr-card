@@ -15,6 +15,7 @@ interface InputControlOptions {
   type?: 'text' | 'datetime-local';
   inputmode?: 'decimal';
   required?: boolean;
+  hideRequiredIndicator?: boolean;
   disabled?: boolean;
   onInput(value: string): void;
 }
@@ -37,7 +38,8 @@ export function inputControl(options: InputControlOptions): TemplateResult {
       .type=${options.type ?? 'text'}
       .inputmode=${options.inputmode ?? ''}
       .autocomplete=${'off'}
-      .required=${!!options.required}
+      .required=${!!options.required && !options.hideRequiredIndicator}
+      aria-required=${options.required ? 'true' : nothing}
       .disabled=${!!options.disabled}
       ?disabled=${options.disabled}
       @input=${input}
@@ -56,62 +58,4 @@ export function inputControl(options: InputControlOptions): TemplateResult {
       @input=${input}
       @change=${input}
   /></label>`;
-}
-
-interface SelectControlOptions {
-  label: string;
-  value: string;
-  options: { value: string; label: string }[];
-  disabled?: boolean;
-  onChange(value: string): void;
-}
-
-export function selectControl(options: SelectControlOptions): TemplateResult {
-  const component = customElements.get('ha-select');
-  const modern = component && 'options' in component.prototype;
-  if (modern)
-    return html`<ha-select
-      .label=${options.label}
-      .value=${options.value}
-      .options=${options.options}
-      .disabled=${!!options.disabled}
-      ?disabled=${options.disabled}
-      @selected=${(event: CustomEvent<{ value: string }>) => {
-        event.stopPropagation();
-        if (!options.disabled) options.onChange(event.detail.value);
-      }}
-    ></ha-select>`;
-  if (component && customElements.get('mwc-list-item'))
-    return html`<ha-select
-      .label=${options.label}
-      .value=${options.value}
-      .disabled=${!!options.disabled}
-      ?disabled=${options.disabled}
-      @selected=${(event: Event) => {
-        event.stopPropagation();
-        const value = (event.currentTarget as HTMLSelectElement).value;
-        if (!options.disabled && value !== options.value) options.onChange(value);
-      }}
-      @closed=${(event: Event) => event.stopPropagation()}
-    >
-      ${options.options.map(
-        (option) => html`<mwc-list-item .value=${option.value}>${option.label}</mwc-list-item>`,
-      )}
-    </ha-select>`;
-  return html`<label
-    >${options.label}<select
-      .value=${options.value}
-      ?disabled=${options.disabled}
-      @change=${(event: Event) => {
-        if (!options.disabled) options.onChange((event.currentTarget as HTMLSelectElement).value);
-      }}
-    >
-      ${options.options.map(
-        (option) =>
-          html`<option value=${option.value} .selected=${option.value === options.value}>
-            ${option.label}
-          </option>`,
-      )}
-    </select></label
-  >`;
 }

@@ -3,6 +3,7 @@ import { property } from 'lit/decorators.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { actionControl } from '../src/custom-elements/action-control';
 import { AddRecordDialog } from '../src/custom-elements/add-record-dialog';
+import { focusControl } from '../src/custom-elements/modal-element';
 import { normalizeConfig } from '../src/config';
 import { actionStyles } from '../src/styles/shared.css';
 import type { Hass, Vehicle } from '../src/types';
@@ -50,30 +51,45 @@ class HaInput extends LitElement {
     /></label>`;
   }
 }
-class HaSelect extends LitElement {
-  @property() label = '';
-  @property() value = '';
-  @property({ attribute: false }) options: { label: string; value: string }[] = [];
-  @property({ type: Boolean, reflect: true }) disabled = false;
+class HaDropdown extends LitElement {
+  @property({ type: Boolean }) open = false;
   render() {
-    return html`<button type="button" ?disabled=${this.disabled}>${this.label}</button>`;
+    return html`<slot name="trigger"></slot><slot></slot>`;
   }
+}
+class HaSelector extends HaInput {
+  @property({ attribute: false }) hass!: Hass;
+  @property({ attribute: false }) selector!: Record<string, unknown>;
+}
+class HaTimeInput extends HaInput {
+  @property({ attribute: false }) locale!: Hass['locale'];
+  @property({ type: Boolean }) clearable = true;
+  @property({ type: Boolean }) enableSecond = true;
+}
+class HaDropdownItem extends LitElement {
+  @property() value = '';
+  @property({ type: Boolean }) disabled = false;
 }
 customElements.define('ha-button', ModernHaButton);
 customElements.define('ha-icon-button', HaIconButton);
+customElements.define('ha-icon', class extends HTMLElement {});
 customElements.define('ha-input', HaInput);
-customElements.define('ha-select', HaSelect);
+customElements.define('ha-selector', HaSelector);
+customElements.define('ha-time-input', HaTimeInput);
+customElements.define('ha-dropdown', HaDropdown);
+customElements.define('ha-dropdown-item', HaDropdownItem);
 
 async function flush(element: LitElement) {
   await element.updateComplete;
   for (const child of element.shadowRoot?.querySelectorAll<LitElement>(
-    'ha-button, ha-icon-button, ha-input, ha-select',
+    'ha-button, ha-icon-button, ha-input, ha-selector, ha-time-input, ha-dropdown, ha-dropdown-item',
   ) ?? [])
     await flush(child);
   await element.updateComplete;
 }
 const hass: Hass = {
   config: { time_zone: 'UTC', currency: 'USD' },
+  locale: { language: 'en-GB', date_format: 'DMY', time_format: '24', first_weekday: 'monday' },
   connection: { sendMessagePromise: vi.fn(), subscribeEvents: vi.fn() },
 };
 async function dialog(vehicles: Vehicle[] = [{ id: 'car', name: 'Car', fuels: ['petrol'] }]) {
@@ -99,6 +115,67 @@ afterEach(() => {
 });
 
 describe('registered modern HA actions', () => {
+  it('loads the HA time input through its selector before enabling the non-clearable control', async () => {
+    const get = customElements.get.bind(customElements);
+    const whenDefined = customElements.whenDefined.bind(customElements);
+    let finish!: (element: CustomElementConstructor) => void;
+    const loaded = new Promise<CustomElementConstructor>((resolve) => {
+      finish = resolve;
+    });
+    const getSpy = vi
+      .spyOn(customElements, 'get')
+      .mockImplementation((name) => (name === 'ha-time-input' ? undefined : get(name)));
+    vi.spyOn(customElements, 'whenDefined').mockImplementation((name) =>
+      name === 'ha-time-input' ? loaded : whenDefined(name),
+    );
+    const element = await dialog();
+    const loader = element.shadowRoot!.querySelector<HaSelector>('[name="time"]')!;
+    expect(loader.localName).toBe('ha-selector');
+    expect(loader.selector).toEqual({ time: { no_second: true } });
+    expect(loader.disabled).toBe(true);
+    const originalTime = loader.value;
+    getSpy.mockRestore();
+    finish(HaTimeInput);
+    await loaded;
+    await flush(element);
+    const time = element.shadowRoot!.querySelector<HaTimeInput>('[name="time"]')!;
+    expect(time.localName).toBe('ha-time-input');
+    expect(time.value).toBe(originalTime);
+    expect(time.disabled).toBe(false);
+    expect(time.clearable).toBe(false);
+  });
+
+  it('positions only the fallback menu action, never the open HA dropdown trigger', () => {
+    const styles = AddRecordDialog.styles.map((style) => style.cssText).join('\n');
+    const positionedMenuRule = styles.match(/([^{}]*\.mode-menu\[open\][^{}]*)\{([^}]*)\}/);
+    expect(positionedMenuRule?.[1].trim()).toBe('details.mode-menu[open] > .action-control');
+    expect(positionedMenuRule?.[2]).toContain('position: absolute');
+  });
+
+  it('waits for nested HA controls to render before focusing their native button', async () => {
+    const control = new HaIconButton();
+    document.body.append(control);
+    expect(control.hasUpdated).toBe(false);
+    focusControl(control);
+    await flush(control);
+    const inner = control.shadowRoot!.querySelector<ModernHaButton>('ha-button')!;
+    expect(document.activeElement).toBe(control);
+    expect(control.shadowRoot!.activeElement).toBe(inner);
+    expect(inner.shadowRoot!.activeElement).toBe(nativeButton(control));
+  });
+
+  it('does not restore deferred focus after a control is removed', async () => {
+    const control = new HaIconButton();
+    document.body.append(control);
+    focusControl(control);
+    control.remove();
+    const next = document.createElement('button');
+    document.body.append(next);
+    next.focus();
+    await control.updateComplete;
+    expect(document.activeElement).toBe(next);
+  });
+
   it('centers only the native calendar icon in material date-time fields', () => {
     const styles = AddRecordDialog.styles.map((style) => style.cssText).join('\n');
     expect(styles).toMatch(
@@ -283,10 +360,12 @@ describe('registered modern HA actions', () => {
     });
     save.dispatchEvent(endTab);
     expect(endTab.defaultPrevented).toBe(true);
-    const mode = element.shadowRoot!.querySelector<HaSelect>('ha-select')!;
+    const mode = element.shadowRoot!.querySelector<HaIconButton>('ha-icon-button')!;
     expect(element.shadowRoot!.activeElement).toBe(mode);
-    expect(mode.shadowRoot!.activeElement).toBe(mode.shadowRoot!.querySelector('button'));
-    mode.shadowRoot!.querySelector('button')!.dispatchEvent(
+    expect((mode.shadowRoot!.activeElement as ModernHaButton).shadowRoot!.activeElement).toBe(
+      nativeButton(mode),
+    );
+    nativeButton(mode).dispatchEvent(
       new KeyboardEvent('keydown', {
         key: 'Tab',
         shiftKey: true,
@@ -303,26 +382,59 @@ describe('registered modern HA actions', () => {
     );
   });
 
-  it('uses standard HA inputs and select, preserving labels, mode changes and disabled fields', async () => {
+  it('uses standard HA inputs and overflow menu, preserving labels, mode changes and disabled fields', async () => {
     const element = await dialog();
     expect(element.shadowRoot!.querySelector('input, select')).toBeNull();
-    const mode = element.shadowRoot!.querySelector<HaSelect>('ha-select')!;
+    const mode = element.shadowRoot!.querySelector<HaDropdown>('ha-dropdown')!;
+    const menuItem = element.shadowRoot!.querySelector<HaDropdownItem>('ha-dropdown-item')!;
+    const icon = mode.querySelector('ha-icon')!;
+    expect(icon.getAttribute('icon')).toBe('mdi:dots-vertical');
+    expect(icon.getAttribute('aria-hidden')).toBe('true');
+    expect(icon.parentElement?.getAttribute('slot')).toBe('trigger');
+    expect(mode.querySelector('svg, .fallback-icon')).toBeNull();
     const quantity = element.shadowRoot!.querySelector<HaInput>('[name="quantity"]')!;
     const amount = element.shadowRoot!.querySelector<HaInput>('[name="amount"]')!;
-    const timestamp = element.shadowRoot!.querySelector<HaInput>('[name="timestamp"]')!;
+    const date = element.shadowRoot!.querySelector<HaSelector>('[name="date"]')!;
+    const time = element.shadowRoot!.querySelector<HaTimeInput>('[name="time"]')!;
     expect(quantity.label).toBe('Quantity (L)');
     expect(quantity.inputmode).toBe('decimal');
     expect(quantity.type).toBe('text');
-    expect(timestamp.type).toBe('datetime-local');
-    expect(timestamp.required).toBe(true);
+    expect(element.shadowRoot!.activeElement).toBe(quantity);
+    expect(element.shadowRoot!.querySelector('ha-select')).toBeNull();
+    expect(mode.getAttribute('placement')).toBe('bottom-end');
+    expect(menuItem.textContent?.trim()).toBe('Switch entry mode');
+    expect(element.shadowRoot!.querySelector('.purchase-values [name="quantity"]')).toBe(quantity);
+    expect(element.shadowRoot!.querySelector('.purchase-values [name="amount"]')).toBe(amount);
+    expect(element.shadowRoot!.querySelector('.purchase-values .preview')).not.toBeNull();
+    expect(element.shadowRoot!.querySelector('.transaction-date [name="date"]')).toBe(date);
+    expect(date.selector).toEqual({ date: {} });
+    expect(time.localName).toBe('ha-time-input');
+    expect(time.clearable).toBe(false);
+    expect(time.enableSecond).toBe(false);
+    expect(date.hass).toBe(hass);
+    expect(time.locale).toBe(hass.locale);
+    for (const field of [quantity, amount, date, time]) {
+      expect(field.required).toBe(false);
+      expect(field.getAttribute('aria-required')).toBe('true');
+    }
+    expect(time.label).toBe('');
+    expect(time.getAttribute('aria-label')).toBe('Time');
+    expect(element.shadowRoot!.querySelector('.transaction-date small')).toBeNull();
+    expect(element.shadowRoot!.textContent).not.toContain('Daylight-saving');
+    expect(element.shadowRoot!.querySelector('[name="timestamp"]')).toBeNull();
     quantity.value = '10';
     quantity.dispatchEvent(new Event('input'));
     amount.value = '15';
     amount.dispatchEvent(new Event('input'));
     await flush(element);
-    mode.dispatchEvent(new CustomEvent('selected', { detail: { value: 'quantity_price' } }));
+    const originalTimestamp = [date.value, time.value];
+    mode.dispatchEvent(new CustomEvent('wa-select', { detail: { item: menuItem } }));
     await flush(element);
-    expect(mode.value).toBe('quantity_price');
+    expect(quantity.value).toBe('10');
+    expect([date.value, time.value]).toEqual(originalTimestamp);
+    expect(element.shadowRoot!.querySelector('.preview')?.textContent).toContain(
+      'Enter both values',
+    );
     expect(amount.value).toBe('');
     expect(amount.label).toBe('Unit price (USD / 1 L)');
     amount.value = '0';
@@ -340,31 +452,138 @@ describe('registered modern HA actions', () => {
     expect(element.save).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ quantity: 10, total_cost: 0, unit_price: 0 }),
     );
-    expect([quantity, amount, timestamp, mode].every((control) => control.disabled)).toBe(true);
+    expect([quantity, amount, date, time, menuItem].every((control) => control.disabled)).toBe(
+      true,
+    );
+    date.dispatchEvent(new CustomEvent('value-changed', { detail: { value: '2000-01-01' } }));
+    time.dispatchEvent(new CustomEvent('value-changed', { detail: { value: '00:00' } }));
+    expect(element.shadowRoot!.querySelector<HaIconButton>('ha-icon-button')!.disabled).toBe(true);
+    mode.dispatchEvent(new CustomEvent('wa-select', { detail: { item: menuItem } }));
+    await flush(element);
+    expect(amount.value).toBe('0');
+    expect(amount.label).toBe('Unit price (USD / 1 L)');
+    expect([date.value, time.value]).toEqual(originalTimestamp);
     finish();
     await flush(element);
   });
 
-  it('validates shadow inputs and focuses the first invalid field before saving', async () => {
+  it.each(['date', 'time'])(
+    'validates shadow inputs and focuses an empty %s before saving',
+    async (name) => {
+      const element = await dialog();
+      const quantity = element.shadowRoot!.querySelector<HaInput>('[name="quantity"]')!;
+      const amount = element.shadowRoot!.querySelector<HaInput>('[name="amount"]')!;
+      const timestamp = element.shadowRoot!.querySelector<HaSelector>(`[name="${name}"]`)!;
+      const save = nativeButton(element.shadowRoot!.querySelector('ha-button.primary')!);
+      save.click();
+      expect(element.save).not.toHaveBeenCalled();
+      expect(element.shadowRoot!.activeElement).toBe(quantity);
+      expect(quantity.shadowRoot!.activeElement).toBe(quantity.shadowRoot!.querySelector('input'));
+      for (const field of [quantity, amount]) {
+        field.value = '10';
+        field.dispatchEvent(new Event('input'));
+      }
+      timestamp.dispatchEvent(new CustomEvent('value-changed', { detail: { value: undefined } }));
+      await flush(element);
+      save.click();
+      expect(element.save).not.toHaveBeenCalled();
+      expect(element.shadowRoot!.activeElement).toBe(timestamp);
+    },
+  );
+
+  it('forwards updated HA locale preferences and saves local selector values in the HA time zone', async () => {
     const element = await dialog();
-    const quantity = element.shadowRoot!.querySelector<HaInput>('[name="quantity"]')!;
-    const amount = element.shadowRoot!.querySelector<HaInput>('[name="amount"]')!;
-    const timestamp = element.shadowRoot!.querySelector<HaInput>('[name="timestamp"]')!;
-    const save = nativeButton(element.shadowRoot!.querySelector('ha-button.primary')!);
-    save.click();
-    expect(element.save).not.toHaveBeenCalled();
-    expect(element.shadowRoot!.activeElement).toBe(quantity);
-    expect(quantity.shadowRoot!.activeElement).toBe(quantity.shadowRoot!.querySelector('input'));
-    for (const field of [quantity, amount]) {
+    element.hass = {
+      ...hass,
+      config: { ...hass.config, time_zone: 'Europe/London' },
+      locale: { language: 'en-US', date_format: 'YMD', time_format: '12', first_weekday: 'sunday' },
+    };
+    await flush(element);
+    const date = element.shadowRoot!.querySelector<HaSelector>('[name="date"]')!;
+    const time = element.shadowRoot!.querySelector<HaTimeInput>('[name="time"]')!;
+    expect(date.hass.locale).toEqual(element.hass.locale);
+    expect(time.locale).toEqual(element.hass.locale);
+    expect(time.label).toBe('');
+    expect(element.shadowRoot!.textContent).not.toContain('Europe/London');
+    for (const field of element.shadowRoot!.querySelectorAll<HaInput>('ha-input')) {
       field.value = '10';
       field.dispatchEvent(new Event('input'));
     }
-    timestamp.value = '';
-    timestamp.dispatchEvent(new Event('input'));
+    date.dispatchEvent(new CustomEvent('value-changed', { detail: { value: '2026-07-12' } }));
+    time.dispatchEvent(new CustomEvent('value-changed', { detail: { value: '13:45:00' } }));
     await flush(element);
-    save.click();
-    expect(element.save).not.toHaveBeenCalled();
-    expect(element.shadowRoot!.activeElement).toBe(timestamp);
+    nativeButton(element.shadowRoot!.querySelector('ha-button.primary')!).click();
+    expect(element.save).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ timestamp: '2026-07-12T12:45:00.000000Z' }),
+    );
+  });
+
+  it.each(['2026-03-29', '2026-10-25'])(
+    'rejects ambiguous or nonexistent selector time on %s',
+    async (value) => {
+      const element = await dialog();
+      element.hass = { ...hass, config: { ...hass.config, time_zone: 'Europe/London' } };
+      for (const field of element.shadowRoot!.querySelectorAll<HaInput>('ha-input')) {
+        field.value = '10';
+        field.dispatchEvent(new Event('input'));
+      }
+      element
+        .shadowRoot!.querySelector('[name="date"]')!
+        .dispatchEvent(new CustomEvent('value-changed', { detail: { value } }));
+      element
+        .shadowRoot!.querySelector('[name="time"]')!
+        .dispatchEvent(new CustomEvent('value-changed', { detail: { value: '01:30:00' } }));
+      await flush(element);
+      nativeButton(element.shadowRoot!.querySelector('ha-button.primary')!).click();
+      await flush(element);
+      expect(element.save).not.toHaveBeenCalled();
+      expect(element.shadowRoot!.querySelector('.error')?.textContent).toContain('unambiguous');
+    },
+  );
+
+  it('lets the HA calendar own focus and Escape without closing the transaction dialog', async () => {
+    const element = await dialog();
+    const close = vi.fn();
+    element.addEventListener('dialog-close', close);
+    const date = element.shadowRoot!.querySelector<HaSelector>('[name="date"]')!;
+    date.dispatchEvent(
+      new CustomEvent('show-dialog', {
+        detail: { dialogTag: 'ha-dialog-date-picker' },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+    const calendar = document.createElement('ha-dialog-date-picker');
+    const input = document.createElement('button');
+    calendar.attachShadow({ mode: 'open' }).append(input);
+    document.body.append(calendar);
+    input.focus();
+    expect(document.activeElement).toBe(calendar);
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+      }),
+    );
+    expect(close).not.toHaveBeenCalled();
+    calendar.remove();
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    expect(element.shadowRoot!.activeElement).toBe(
+      element.shadowRoot!.querySelector('[name="quantity"]'),
+    );
+    element.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+      }),
+    );
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it('still reports required fields when HA validation is unavailable in the browser', async () => {
@@ -424,9 +643,9 @@ describe('registered modern HA actions', () => {
     const element = await dialog();
     const close = vi.fn();
     element.addEventListener('dialog-close', close);
-    const mode = element.shadowRoot!.querySelector<HaSelect>('ha-select')!;
+    const mode = element.shadowRoot!.querySelector<HaDropdown>('ha-dropdown')!;
     mode.addEventListener('keydown', (event) => event.preventDefault(), { once: true });
-    mode.shadowRoot!.querySelector('button')!.dispatchEvent(
+    nativeButton(element.shadowRoot!.querySelector('ha-icon-button')!).dispatchEvent(
       new KeyboardEvent('keydown', {
         key: 'Escape',
         bubbles: true,

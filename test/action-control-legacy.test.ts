@@ -2,7 +2,7 @@ import { html, LitElement, render } from 'lit';
 import { property } from 'lit/decorators.js';
 import { afterEach, expect, it, vi } from 'vitest';
 import { actionControl } from '../src/custom-elements/action-control';
-import { inputControl, selectControl } from '../src/custom-elements/field-control';
+import { inputControl } from '../src/custom-elements/field-control';
 
 class LegacyHaButton extends LitElement {
   @property({ type: Boolean, reflect: true }) disabled = false;
@@ -31,14 +31,7 @@ class LegacyHaTextfield extends LitElement {
     return this.shadowRoot!.querySelector('input')!.reportValidity();
   }
 }
-class LegacyHaSelect extends LitElement {
-  @property() value = '';
-  @property() label = '';
-  @property({ type: Boolean }) disabled = false;
-}
 customElements.define('ha-textfield', LegacyHaTextfield);
-customElements.define('ha-select', LegacyHaSelect);
-customElements.define('mwc-list-item', class extends HTMLElement {});
 afterEach(() => document.body.replaceChildren());
 
 it('supports legacy raised and text buttons without relying on HA form association', async () => {
@@ -66,11 +59,10 @@ it('supports legacy raised and text buttons without relying on HA form associati
   expect(submit).toHaveBeenCalledOnce();
 });
 
-it('uses legacy HA fields and slotted select options without changing values on initialization', async () => {
+it('uses legacy HA fields with required validation and decimal input', async () => {
   const container = document.createElement('div');
   document.body.append(container);
   const input = vi.fn();
-  const select = vi.fn();
   render(
     html`${inputControl({
       name: 'quantity',
@@ -78,14 +70,6 @@ it('uses legacy HA fields and slotted select options without changing values on 
       value: '',
       required: true,
       onInput: input,
-    })}${selectControl({
-      label: 'Entry mode',
-      value: 'total',
-      options: [
-        { value: 'total', label: 'Total paid' },
-        { value: 'price', label: 'Unit price' },
-      ],
-      onChange: select,
     })}`,
     container,
   );
@@ -96,14 +80,4 @@ it('uses legacy HA fields and slotted select options without changing values on 
   field.value = '1,5';
   field.dispatchEvent(new Event('input'));
   expect(input).toHaveBeenCalledExactlyOnceWith('1,5');
-  const mode = container.querySelector<LegacyHaSelect>('ha-select')!;
-  expect([...mode.querySelectorAll('mwc-list-item')].map((item) => item.textContent)).toEqual([
-    'Total paid',
-    'Unit price',
-  ]);
-  mode.dispatchEvent(new CustomEvent('selected'));
-  expect(select).not.toHaveBeenCalled();
-  mode.value = 'price';
-  mode.dispatchEvent(new CustomEvent('selected'));
-  expect(select).toHaveBeenCalledExactlyOnceWith('price');
 });

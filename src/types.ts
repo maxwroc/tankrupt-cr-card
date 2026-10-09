@@ -21,7 +21,12 @@ export interface HassConnection {
 export interface Hass {
   connection: HassConnection;
   config: { time_zone: string; currency?: string };
-  locale?: { language: string };
+  locale?: {
+    language: string;
+    date_format?: 'language' | 'system' | 'DMY' | 'MDY' | 'YMD';
+    time_format?: 'language' | 'system' | '12' | '24';
+    first_weekday?: 'language' | 'system' | 'saturday' | 'sunday' | 'monday';
+  };
   language?: string;
 }
 

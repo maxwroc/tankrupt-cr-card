@@ -439,12 +439,30 @@ dialogs are not yet loaded, open a built-in HA dialog once and retry History,
 or reload the dashboard. An unavailable native surface is reported rather than
 silently replaced by an inline list.
 
-Transaction fields use HA's standard filled inputs and dropdowns; the vehicle
+Transaction fields use HA's standard filled inputs; the vehicle
 editor uses `ha-form`, just like the main card settings. Actions use HA text/icon
 buttons with filled primary actions and plain secondary actions, without custom
-sizing or extra focus outlines. Older HA text fields/selects are supported, with
+sizing or extra focus outlines. Older HA text fields are supported, with
 native controls as the standalone demo fallback. Required-field validation,
 decimal input, Enter submission and keyboard focus are preserved across controls.
+
+In Add transaction, Quantity, Total paid / Unit price, and the calculated result
+are grouped at the top, with extra space before the transaction date. Use the
+three-dot **Transaction options** menu in the upper-right and choose **Switch
+entry mode** to toggle between total-paid and unit-price entry. Switching keeps
+Quantity and the date but clears the amount. This applies only to the open dialog;
+the next transaction starts with the card's configured `input_mode`. The menu is
+hidden during vehicle/fuel selection and disabled while saving.
+
+The transaction date and time use HA's standard selectors and regional date,
+time, and first-weekday preferences. Times are entered in the configured HA
+time zone; ambiguous or nonexistent daylight-saving times remain invalid.
+Required-field stars and the time-zone/DST note are omitted from the dialog;
+empty or invalid values are still rejected when saving.
+The date field fills the available width beside the right-aligned time control.
+Time remains mandatory and has no clear button.
+The standalone demo and older frontends without HA selectors use the browser's
+native date-time input and formatting.
 
 Retention/maximum-record policies can delete older data. Aggregates cannot restore
 pruned history; warnings identify configured pruning, and “complete” means complete
