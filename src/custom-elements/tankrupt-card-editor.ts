@@ -28,6 +28,39 @@ const labels: Record<string, string> = {
   show_recent_records: 'Show History action',
 };
 
+const vehicleLabels: Record<string, string> = {
+  id: 'Stable ID',
+  name: 'Name',
+  image: 'Image URL (optional)',
+  ...FUEL_LABELS,
+};
+
+const recordDefinition = `fields:
+  - key: vehicle_id
+    label: Vehicle ID
+    type: text
+    required: true
+  - key: fuel_type
+    label: Fuel type
+    type: text
+    required: true
+  - key: quantity
+    label: Quantity
+    type: number
+    required: true
+  - key: unit_price
+    label: Unit price
+    type: number
+    required: true
+  - key: total_cost
+    label: Total cost
+    type: number
+    required: true
+  - key: vehicle_name
+    label: Vehicle name
+    type: text
+    required: false`;
+
 @customElement(EDITOR_TAG)
 export class TankruptCardEditor extends LitElement {
   @property({ attribute: false }) hass?: Hass;
@@ -51,12 +84,17 @@ export class TankruptCardEditor extends LitElement {
         display: grid;
         gap: 12px;
       }
-      .fuel {
-        flex-direction: row;
-        align-items: center;
+      .record-setup {
+        margin-block-start: 24px;
       }
-      .fuel input {
-        min-height: unset;
+      pre {
+        padding: 16px;
+        overflow-x: auto;
+        background: var(--secondary-background-color);
+        border-radius: var(--ha-border-radius-md, 8px);
+      }
+      a {
+        color: var(--primary-color);
       }
     `,
   ];
@@ -162,8 +200,7 @@ export class TankruptCardEditor extends LitElement {
     const types = new Map(this.types.map((type) => [type.id, type.name]));
     if (this.config.record_type && !types.has(this.config.record_type))
       types.set(this.config.record_type, this.config.record_type);
-    return [
-      { name: 'title', selector: { text: {} } },
+    const recordType =
       types.size && !this.discoveryError
         ? {
             ...select(
@@ -172,9 +209,13 @@ export class TankruptCardEditor extends LitElement {
             ),
             required: true,
           }
-        : { name: 'record_type', required: true, selector: { text: {} } },
+        : { name: 'record_type', required: true, selector: { text: {} } };
+    if (!this.config.record_type?.trim()) return [recordType];
+    return [
+      recordType,
+      { name: 'title', selector: { text: {} } },
       { name: 'currency', selector: { text: {} } },
-      { name: 'filter_vehicle', selector: { text: {} } },
+      ...(this.config.vehicles?.length ? [{ name: 'filter_vehicle', selector: { text: {} } }] : []),
       select('filter_fuel', [
         { value: '', label: 'All fuels' },
         ...FUELS.map((value) => ({ value, label: FUEL_LABELS[value] })),
@@ -246,7 +287,7 @@ export class TankruptCardEditor extends LitElement {
       filter_vehicle: this.config.filter?.vehicle ?? '',
       filter_fuel: this.config.filter?.fuel ?? '',
     };
-    return html`<ha-form
+    const form = html`<ha-form
         .hass=${this.hass}
         .data=${data}
         .schema=${this.schema()}
@@ -267,65 +308,98 @@ export class TankruptCardEditor extends LitElement {
                 },
               })}`
           : nothing
-      }
-      ${validation ? html`<p class="error" role="alert">${validation}</p>` : nothing}
-      <h2>Vehicles</h2>
-      <p class="muted">
-        Optional. IDs identify stored history: keep them stable when renaming or reordering
-        vehicles, and use the same IDs on every card.
-      </p>
-      ${(this.config.vehicles ?? []).map(
-        (vehicle, index) =>
-          html`<fieldset>
-            <legend>Vehicle ${index + 1}</legend>
-            <label
-              >Stable ID<input
-                .value=${vehicle.id}
-                @change=${(event: Event) => this.updateVehicle(index, { id: (event.target as HTMLInputElement).value })}
-            /></label>
-            <label
-              >Name<input
-                .value=${vehicle.name}
-                @input=${(event: Event) => this.updateVehicle(index, { name: (event.target as HTMLInputElement).value })}
-            /></label>
-            <label
-              >Image URL (optional)<input
-                .value=${vehicle.image ?? ''}
-                @change=${(event: Event) => this.updateVehicle(index, { image: (event.target as HTMLInputElement).value || undefined })}
-            /></label>
-            <div class="row">
-              ${FUELS.map(
-                (fuel: Fuel) =>
-                  html`<label class="fuel"
-                    ><input
-                      type="checkbox"
-                      .checked=${vehicle.fuels.includes(fuel)}
-                      @change=${(event: Event) =>
-                        this.updateVehicle(index, {
-                          fuels: (event.target as HTMLInputElement).checked
-                            ? [...vehicle.fuels, fuel]
-                            : vehicle.fuels.filter((item) => item !== fuel),
-                        })}
-                    />${FUEL_LABELS[fuel]}</label
-                  >`,
-              )}
-            </div>
-            ${actionControl({
-              label: `Remove vehicle ${vehicle.name}`,
-              appearance: 'danger',
-              onClick: () =>
-                this.change({
-                  ...this.config,
-                  vehicles: this.config.vehicles?.filter((_, i) => i !== index),
-                }),
-            })}
-          </fieldset>`,
-      )}
-      ${actionControl({ label: 'Add vehicle', onClick: () => this.addVehicle() })}
-      <p class="muted">
-        Create the record type manually in Custom Records first. Advanced field mappings and vehicle
-        unit/price-basis overrides are available in YAML. Currency changes relabel historical
-        amounts; they do not convert them.
-      </p>`;
+      }`;
+    const options = !this.config.record_type?.trim()
+      ? html` <section class="record-setup" aria-label="Record type setup">
+          <p>
+            Select an existing record type above, or create one in Custom Records first. Choose
+            <strong>Add record type</strong>, pick a name, and paste this YAML into
+            <strong>Field definition</strong>. Once added, refresh the list and select your record
+            type from the dropdown above.
+          </p>
+          <p>
+            <a
+              href="/config/integrations/integration/custom_records"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Open Custom Records integration</a
+            >
+          </p>
+          <pre><code>${recordDefinition}</code></pre>
+          <p class="muted">
+            Review retention and maximum-record settings before creating the record type. The
+            integration provides the timestamp; do not add a timestamp field.
+          </p>
+          ${actionControl({
+            label: 'Refresh record types',
+            disabled: this.discovering,
+            onClick: () => {
+              if (!this.discovering) void this.discover();
+            },
+          })}
+        </section>`
+      : html` ${validation ? html`<p class="error" role="alert">${validation}</p>` : nothing}
+          <h2>Vehicles</h2>
+          <p class="muted">
+            Optional. IDs identify stored history: keep them stable when renaming or reordering
+            vehicles, and use the same IDs on every card.
+          </p>
+          ${(this.config.vehicles ?? []).map(
+            (vehicle, index) =>
+              html`<fieldset>
+                <legend>Vehicle ${index + 1}</legend>
+                <ha-form
+                  .hass=${this.hass}
+                  .data=${{
+                    id: vehicle.id,
+                    name: vehicle.name,
+                    image: vehicle.image ?? '',
+                    ...Object.fromEntries(
+                      FUELS.map((fuel) => [fuel, vehicle.fuels.includes(fuel)]),
+                    ),
+                  }}
+                  .schema=${[
+                    { name: 'id', required: true, selector: { text: {} } },
+                    { name: 'name', required: true, selector: { text: {} } },
+                    { name: 'image', selector: { text: {} } },
+                    ...FUELS.map((name) => ({ name, selector: { boolean: {} } })),
+                  ]}
+                  .computeLabel=${(field: { name: string }) => vehicleLabels[field.name] ?? field.name}
+                  @value-changed=${(
+                    event: CustomEvent<{
+                      value: { id: string; name: string; image: string } & Record<Fuel, boolean>;
+                    }>,
+                  ) => {
+                    event.stopPropagation();
+                    const value = event.detail.value;
+                    this.updateVehicle(index, {
+                      id: value.id,
+                      name: value.name,
+                      image: value.image || undefined,
+                      fuels: [
+                        ...vehicle.fuels.filter((fuel) => value[fuel]),
+                        ...FUELS.filter((fuel) => value[fuel] && !vehicle.fuels.includes(fuel)),
+                      ],
+                    });
+                  }}
+                ></ha-form>
+                ${actionControl({
+                  label: `Remove vehicle ${vehicle.name}`,
+                  appearance: 'danger',
+                  onClick: () =>
+                    this.change({
+                      ...this.config,
+                      vehicles: this.config.vehicles?.filter((_, i) => i !== index),
+                    }),
+                })}
+              </fieldset>`,
+          )}
+          ${actionControl({ label: 'Add vehicle', onClick: () => this.addVehicle() })}
+          <p class="muted">
+            Create the record type manually in Custom Records first. Advanced field mappings and
+            vehicle unit/price-basis overrides are available in YAML. Currency changes relabel
+            historical amounts; they do not convert them.
+          </p>`;
+    return html`${form}${options}`;
   }
 }

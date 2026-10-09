@@ -123,6 +123,12 @@ record_type: fuel_purchases
 
 Use the visual editor for ordinary options. YAML supports the full configuration,
 including field mappings and detailed vehicle unit overrides.
+Until a record type is selected, the editor shows only the record-type field and
+setup instructions, including the field-definition YAML and a link to Custom
+Records. After creating a record type, use **Refresh record types** to update the
+dropdown. Selecting a record type hides the setup instructions and reveals the
+remaining options; clearing the selection returns to setup without discarding
+those settings.
 
 ### Two vehicles, including a plug-in hybrid
 
@@ -238,8 +244,10 @@ summaries, charts and History (including deletion) remain unchanged.
 When a title is shown, its header spacing is preserved even with both actions
 hidden. With `title: ""` and both actions hidden, the empty header is omitted.
 
-Omit either filter to include all matching values. The editor accepts a manually
-entered historical vehicle ID even if that vehicle is no longer configured.
+Omit either filter to include all matching values. The vehicle ID filter is shown
+in the visual editor only when at least one vehicle is configured. It accepts
+historical IDs as well as current ones. Hiding the field does not remove an existing
+filter; vehicle filters remain editable in YAML even without configured vehicles.
 Filters apply to summary, trend, chart and History. They are display settings,
 not authorization boundaries, and do not restrict choices in Add.
 Advanced field mappings and per-vehicle unit/price overrides survive visual edits.
@@ -431,9 +439,12 @@ dialogs are not yet loaded, open a built-in HA dialog once and retry History,
 or reload the dashboard. An unavailable native surface is reported rather than
 silently replaced by an inline list.
 
-Actions use HA text/icon buttons when available, with one themed native fallback
-for the standalone demo or older HA components. Keyboard focus, disabled/pending
-states, form submission and pointer styling are shared across these controls.
+Transaction fields use HA's standard filled inputs and dropdowns; the vehicle
+editor uses `ha-form`, just like the main card settings. Actions use HA text/icon
+buttons with filled primary actions and plain secondary actions, without custom
+sizing or extra focus outlines. Older HA text fields/selects are supported, with
+native controls as the standalone demo fallback. Required-field validation,
+decimal input, Enter submission and keyboard focus are preserved across controls.
 
 Retention/maximum-record policies can delete older data. Aggregates cannot restore
 pruned history; warnings identify configured pruning, and “complete” means complete

@@ -743,6 +743,7 @@ export class TankruptCard extends LitElement {
                 ${
                   hasActions
                     ? html`<div class="card-actions">
+                        ${config.show_recent_records ? actionControl({ label: 'History', disabled: this.historyOpen, onClick: () => this.openHistory() }) : nothing}
                         ${
                           config.show_add_button
                             ? actionControl({
@@ -756,7 +757,6 @@ export class TankruptCard extends LitElement {
                               })
                             : nothing
                         }
-                        ${config.show_recent_records ? actionControl({ label: 'History', disabled: this.historyOpen, onClick: () => this.openHistory() }) : nothing}
                       </div>`
                     : nothing
                 }

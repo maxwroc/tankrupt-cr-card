@@ -249,7 +249,7 @@ describe('card presentation and scope', () => {
     const element = await card();
     expect(
       [...element.shadowRoot!.querySelectorAll('button')].map((node) => node.textContent!.trim()),
-    ).toEqual(['Add', 'History']);
+    ).toEqual(['History', 'Add']);
     expect(element.shadowRoot!.querySelector('select')).toBeNull();
     expect(element.shadowRoot!.querySelector('tankrupt-recent-records')).toBeNull();
     expect(mock.sources[0].fetchHistoryPage).not.toHaveBeenCalled();

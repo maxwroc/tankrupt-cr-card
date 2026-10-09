@@ -15,9 +15,9 @@ function containsFocus(element: HTMLElement, active: Element | null): boolean {
   return false;
 }
 
-function focusControl(element: HTMLElement): void {
+export function focusControl(element: HTMLElement): void {
   const inner = element.shadowRoot?.querySelector<HTMLElement>(
-    'button:not([disabled]), ha-button:not([disabled]), [tabindex="0"]',
+    'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), ha-button:not([disabled]), ha-picker-field:not([disabled]), wa-input:not([disabled]), [tabindex="0"]',
   );
   if (inner) focusControl(inner);
   else element.focus();
@@ -30,7 +30,7 @@ export abstract class ModalElement extends LitElement {
   connectedCallback(): void {
     super.connectedCallback();
     this.returnFocus = activeElement() as HTMLElement | undefined;
-    document.addEventListener('keydown', this.onKeydown, true);
+    document.addEventListener('keydown', this.onKeydown);
     document.addEventListener('focusin', this.onFocus, true);
     void this.updateComplete.then(() => {
       if (this.isConnected) this.focusFirst();
@@ -39,7 +39,7 @@ export abstract class ModalElement extends LitElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
-    document.removeEventListener('keydown', this.onKeydown, true);
+    document.removeEventListener('keydown', this.onKeydown);
     document.removeEventListener('focusin', this.onFocus, true);
     if (this.returnFocus?.isConnected) this.returnFocus.focus();
   }
@@ -52,7 +52,7 @@ export abstract class ModalElement extends LitElement {
   private focusables(): HTMLElement[] {
     return [
       ...this.renderRoot.querySelectorAll<HTMLElement>(
-        'button, ha-button, ha-icon-button, input, select, textarea, a[href], [tabindex]',
+        'button, ha-button, ha-icon-button, ha-input, ha-textfield, ha-select, input, select, textarea, a[href], [tabindex]',
       ),
     ].filter(
       (element) =>
@@ -67,6 +67,7 @@ export abstract class ModalElement extends LitElement {
   };
 
   private onKeydown = (event: KeyboardEvent): void => {
+    if (event.defaultPrevented) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();

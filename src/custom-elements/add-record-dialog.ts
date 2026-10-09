@@ -16,7 +16,8 @@ import type {
 } from '../types';
 import { modalStyles, sharedStyles } from '../styles/shared.css';
 import { actionControl } from './action-control';
-import { ModalElement } from './modal-element';
+import { inputControl, selectControl, type InputControlElement } from './field-control';
+import { focusControl, ModalElement } from './modal-element';
 import { emit, LABELS, message, money, number } from './ui-helpers';
 
 @customElement('tankrupt-add-dialog')
@@ -43,17 +44,15 @@ export class AddRecordDialog extends ModalElement {
     css`
       .actions {
         gap: 8px;
-        flex-wrap: nowrap;
-      }
-      .actions .action-control {
-        min-width: 0;
-        --wa-form-control-padding-inline: 8px;
-      }
-      .actions button.action-control {
-        padding-inline: 8px;
       }
       .back {
         margin-inline-end: auto;
+      }
+      /* HA's floating-label padding also lowers the browser's calendar icon. */
+      ha-input[type='datetime-local'][appearance='material']::part(
+          wa-input
+        )::-webkit-calendar-picker-indicator {
+        transform: translateY(calc(var(--ha-space-3, 12px) / -2));
       }
     `,
   ];
@@ -105,6 +104,14 @@ export class AddRecordDialog extends ModalElement {
       return;
     }
     this.error = '';
+    const invalid = [
+      ...this.renderRoot.querySelectorAll<InputControlElement>('.input-control'),
+    ].filter((field) => !field.reportValidity() || (field.required && !field.value.trim()));
+    if (invalid.length) {
+      this.error = 'Complete all required fields.';
+      focusControl(invalid[0]);
+      return;
+    }
     let record: NewTransaction;
     try {
       record = {
@@ -124,6 +131,21 @@ export class AddRecordDialog extends ModalElement {
     } finally {
       this.pending = false;
     }
+  };
+
+  private inputKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter' || event.isComposing || event.defaultPrevented) return;
+    const path = event.composedPath();
+    if (
+      !(path[0] instanceof HTMLInputElement) ||
+      !path.some(
+        (element) => element instanceof HTMLElement && element.matches('ha-input, ha-textfield'),
+      )
+    )
+      return;
+    // Shadow inputs cannot implicitly submit the surrounding native form.
+    event.preventDefault();
+    if (!this.pending) (event.currentTarget as HTMLFormElement).requestSubmit();
   };
 
   private preview() {
@@ -168,101 +190,97 @@ export class AddRecordDialog extends ModalElement {
         chooseVehicle
           ? html`<p>Choose a vehicle</p>
               <div class="choices">
-                ${this.config.vehicles.map(
-                  (vehicle) =>
-                    actionControl({
-                      label: vehicle.name,
-                      onClick: () => this.selectVehicle(vehicle),
-                      content: html`${
-                        vehicle.image && !this.brokenImages.has(vehicle.id)
-                          ? html`<img
-                              src=${vehicle.image}
-                              alt=""
-                              @error=${() => {
-                                this.brokenImages = new Set([...this.brokenImages, vehicle.id]);
-                              }}
-                            />`
-                          : html`<span aria-hidden="true">🚘 </span>`
-                      }${vehicle.name}`,
-                    }),
+                ${this.config.vehicles.map((vehicle) =>
+                  actionControl({
+                    label: vehicle.name,
+                    onClick: () => this.selectVehicle(vehicle),
+                    content: html`${
+                      vehicle.image && !this.brokenImages.has(vehicle.id)
+                        ? html`<img
+                            slot="start"
+                            src=${vehicle.image}
+                            alt=""
+                            @error=${() => {
+                              this.brokenImages = new Set([...this.brokenImages, vehicle.id]);
+                            }}
+                          />`
+                        : html`<span slot="start" aria-hidden="true">🚘 </span>`
+                    }${vehicle.name}`,
+                  }),
                 )}
               </div>`
           : !this.fuel
             ? html`<p>${this.vehicle?.name ?? 'Choose fuel or energy'}</p>
                 <div class="choices">
-                  ${fuels.map(
-                    (fuel) =>
-                      actionControl({
-                        label: FUEL_LABELS[fuel],
-                        onClick: () => {
-                          this.fuel = fuel;
-                          void this.updateComplete.then(() => this.focusFirst());
-                        },
-                      }),
+                  ${fuels.map((fuel) =>
+                    actionControl({
+                      label: FUEL_LABELS[fuel],
+                      onClick: () => {
+                        this.fuel = fuel;
+                        void this.updateComplete.then(() => this.focusFirst());
+                      },
+                    }),
                   )}
                 </div>`
-            : html`<form @submit=${this.submit}>
+            : html`<form @submit=${this.submit} @keydown=${this.inputKeydown}>
                 <div>
                   <strong
                     >${this.vehicle?.name ?? LABELS.unassigned} · ${FUEL_LABELS[this.fuel]}</strong
                   >
                 </div>
-                <label
-                  >Entry mode<select
-                    .value=${this.mode}
-                    ?disabled=${this.pending}
-                    @change=${(e: Event) => {
-                      this.mode = (e.target as HTMLSelectElement).value as InputMode;
-                      this.amount = '';
-                      this.error = '';
-                    }}
-                  >
-                    <option value="quantity_total" .selected=${this.mode === 'quantity_total'}>
-                      Quantity + total paid
-                    </option>
-                    <option value="quantity_price" .selected=${this.mode === 'quantity_price'}>
-                      Quantity + unit price
-                    </option>
-                  </select></label
-                >
-                <label
-                  >Quantity (${UNIT_LABELS[unit]})<input
-                    name="quantity"
-                    inputmode="decimal"
-                    autocomplete="off"
-                    required
-                    .value=${this.quantity}
-                    ?disabled=${this.pending}
-                    @input=${(e: Event) => {
-                      this.quantity = (e.target as HTMLInputElement).value;
-                    }}
-                /></label>
-                <label
-                  >${this.mode === 'quantity_total' ? `Total paid (${currency})` : `Unit price (${currency} / ${basis} ${UNIT_LABELS[unit]})`}
-                  <input
-                    name="amount"
-                    inputmode="decimal"
-                    autocomplete="off"
-                    required
-                    .value=${this.amount}
-                    ?disabled=${this.pending}
-                    @input=${(e: Event) => {
-                      this.amount = (e.target as HTMLInputElement).value;
-                    }}
-                  />
-                </label>
+                ${selectControl({
+                  label: 'Entry mode',
+                  value: this.mode,
+                  disabled: this.pending,
+                  options: [
+                    { value: 'quantity_total', label: 'Quantity + total paid' },
+                    { value: 'quantity_price', label: 'Quantity + unit price' },
+                  ],
+                  onChange: (value) => {
+                    if (value !== 'quantity_total' && value !== 'quantity_price') return;
+                    if (value === this.mode) return;
+                    this.mode = value;
+                    this.amount = '';
+                    this.error = '';
+                  },
+                })}
+                ${inputControl({
+                  name: 'quantity',
+                  label: `Quantity (${UNIT_LABELS[unit]})`,
+                  value: this.quantity,
+                  inputmode: 'decimal',
+                  required: true,
+                  disabled: this.pending,
+                  onInput: (value) => {
+                    this.quantity = value;
+                  },
+                })}
+                ${inputControl({
+                  name: 'amount',
+                  label:
+                    this.mode === 'quantity_total'
+                      ? `Total paid (${currency})`
+                      : `Unit price (${currency} / ${basis} ${UNIT_LABELS[unit]})`,
+                  value: this.amount,
+                  inputmode: 'decimal',
+                  required: true,
+                  disabled: this.pending,
+                  onInput: (value) => {
+                    this.amount = value;
+                  },
+                })}
                 <div class="preview" role="status" aria-live="polite">${this.preview()}</div>
-                <label
-                  >Transaction date and time (${this.hass.config.time_zone})<input
-                    name="timestamp"
-                    type="datetime-local"
-                    required
-                    .value=${this.timestamp}
-                    ?disabled=${this.pending}
-                    @input=${(e: Event) => {
-                      this.timestamp = (e.target as HTMLInputElement).value;
-                    }}
-                /></label>
+                ${inputControl({
+                  name: 'timestamp',
+                  label: `Transaction date and time (${this.hass.config.time_zone})`,
+                  value: this.timestamp,
+                  type: 'datetime-local',
+                  required: true,
+                  disabled: this.pending,
+                  onInput: (value) => {
+                    this.timestamp = value;
+                  },
+                })}
                 <small
                   >Daylight-saving times that are ambiguous or do not exist are rejected. Choose an
                   unambiguous local time.</small

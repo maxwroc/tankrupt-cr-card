@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { actionControl } from '../src/custom-elements/action-control';
 import { AddRecordDialog } from '../src/custom-elements/add-record-dialog';
 import { normalizeConfig } from '../src/config';
+import { actionStyles } from '../src/styles/shared.css';
 import type { Hass, Vehicle } from '../src/types';
 
 class ModernHaButton extends LitElement {
@@ -25,13 +26,48 @@ class HaIconButton extends LitElement {
     </ha-button>`;
   }
 }
+class HaInput extends LitElement {
+  @property() value = '';
+  @property() label = '';
+  @property() name = '';
+  @property() type = 'text';
+  @property() inputmode = '';
+  @property({ type: Boolean }) required = false;
+  @property({ type: Boolean, reflect: true }) disabled = false;
+  reportValidity() {
+    return this.shadowRoot!.querySelector('input')!.reportValidity();
+  }
+  render() {
+    return html`<label
+      >${this.label}<input
+        .value=${this.value}
+        type=${this.type}
+        ?required=${this.required}
+        ?disabled=${this.disabled}
+        @input=${(event: Event) => {
+          this.value = (event.target as HTMLInputElement).value;
+        }}
+    /></label>`;
+  }
+}
+class HaSelect extends LitElement {
+  @property() label = '';
+  @property() value = '';
+  @property({ attribute: false }) options: { label: string; value: string }[] = [];
+  @property({ type: Boolean, reflect: true }) disabled = false;
+  render() {
+    return html`<button type="button" ?disabled=${this.disabled}>${this.label}</button>`;
+  }
+}
 customElements.define('ha-button', ModernHaButton);
 customElements.define('ha-icon-button', HaIconButton);
+customElements.define('ha-input', HaInput);
+customElements.define('ha-select', HaSelect);
 
 async function flush(element: LitElement) {
   await element.updateComplete;
   for (const child of element.shadowRoot?.querySelectorAll<LitElement>(
-    'ha-button, ha-icon-button',
+    'ha-button, ha-icon-button, ha-input, ha-select',
   ) ?? [])
     await flush(child);
   await element.updateComplete;
@@ -63,6 +99,13 @@ afterEach(() => {
 });
 
 describe('registered modern HA actions', () => {
+  it('centers only the native calendar icon in material date-time fields', () => {
+    const styles = AddRecordDialog.styles.map((style) => style.cssText).join('\n');
+    expect(styles).toMatch(
+      /ha-input\[type='datetime-local'\]\[appearance='material'\]::part\(\s*wa-input\s*\)::-webkit-calendar-picker-indicator\s*\{\s*transform: translateY\(calc\(var\(--ha-space-3, 12px\) \/ -2\)\);/,
+    );
+  });
+
   it('maps primary, danger, pending, names and slots to actual HA controls', async () => {
     const container = document.createElement('div');
     document.body.append(container);
@@ -75,17 +118,20 @@ describe('registered modern HA actions', () => {
     const [save, remove] = container.querySelectorAll<ModernHaButton>('ha-button');
     await flush(save);
     await flush(remove);
-    expect(save.appearance).toBe('accent');
+    expect(save.appearance).toBe('filled');
     expect(save.variant).toBe('brand');
     expect(save.slot).toBe('primaryAction');
     expect(save.type).toBe('button');
     expect(remove.variant).toBe('danger');
+    expect(remove.appearance).toBe('plain');
     expect(remove.disabled && remove.loading).toBe(true);
     const close = container.querySelector<HaIconButton>('ha-icon-button')!;
     await flush(close);
     expect(close.label).toBe('Close');
     expect(close.getAttribute('aria-label')).toBe('Close');
     expect(container.querySelector('button')).toBeNull();
+    expect(actionStyles.cssText).not.toMatch(/--(?:ha-button-height|ha-icon-button-size|wa-)/);
+    expect(actionStyles.cssText).not.toContain('::part(base)');
   });
 
   it.each(['Enter', ' '])(
@@ -184,7 +230,7 @@ describe('registered modern HA actions', () => {
     nativeButton(save).click();
     expect(element.save).not.toHaveBeenCalled();
     for (const name of ['quantity', 'amount']) {
-      const input = element.shadowRoot!.querySelector<HTMLInputElement>(`[name="${name}"]`)!;
+      const input = element.shadowRoot!.querySelector<HaInput>(`[name="${name}"]`)!;
       input.value = '10';
       input.dispatchEvent(new Event('input'));
     }
@@ -237,8 +283,10 @@ describe('registered modern HA actions', () => {
     });
     save.dispatchEvent(endTab);
     expect(endTab.defaultPrevented).toBe(true);
-    expect(element.shadowRoot!.activeElement).toBe(element.shadowRoot!.querySelector('select'));
-    element.shadowRoot!.querySelector('select')!.dispatchEvent(
+    const mode = element.shadowRoot!.querySelector<HaSelect>('ha-select')!;
+    expect(element.shadowRoot!.activeElement).toBe(mode);
+    expect(mode.shadowRoot!.activeElement).toBe(mode.shadowRoot!.querySelector('button'));
+    mode.shadowRoot!.querySelector('button')!.dispatchEvent(
       new KeyboardEvent('keydown', {
         key: 'Tab',
         shiftKey: true,
@@ -253,5 +301,148 @@ describe('registered modern HA actions', () => {
     expect((opener.shadowRoot!.activeElement as ModernHaButton).shadowRoot!.activeElement).toBe(
       nativeButton(opener),
     );
+  });
+
+  it('uses standard HA inputs and select, preserving labels, mode changes and disabled fields', async () => {
+    const element = await dialog();
+    expect(element.shadowRoot!.querySelector('input, select')).toBeNull();
+    const mode = element.shadowRoot!.querySelector<HaSelect>('ha-select')!;
+    const quantity = element.shadowRoot!.querySelector<HaInput>('[name="quantity"]')!;
+    const amount = element.shadowRoot!.querySelector<HaInput>('[name="amount"]')!;
+    const timestamp = element.shadowRoot!.querySelector<HaInput>('[name="timestamp"]')!;
+    expect(quantity.label).toBe('Quantity (L)');
+    expect(quantity.inputmode).toBe('decimal');
+    expect(quantity.type).toBe('text');
+    expect(timestamp.type).toBe('datetime-local');
+    expect(timestamp.required).toBe(true);
+    quantity.value = '10';
+    quantity.dispatchEvent(new Event('input'));
+    amount.value = '15';
+    amount.dispatchEvent(new Event('input'));
+    await flush(element);
+    mode.dispatchEvent(new CustomEvent('selected', { detail: { value: 'quantity_price' } }));
+    await flush(element);
+    expect(mode.value).toBe('quantity_price');
+    expect(amount.value).toBe('');
+    expect(amount.label).toBe('Unit price (USD / 1 L)');
+    amount.value = '0';
+    amount.dispatchEvent(new Event('input'));
+    await flush(element);
+    let finish!: () => void;
+    element.save = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    nativeButton(element.shadowRoot!.querySelector('ha-button.primary')!).click();
+    await flush(element);
+    expect(element.save).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ quantity: 10, total_cost: 0, unit_price: 0 }),
+    );
+    expect([quantity, amount, timestamp, mode].every((control) => control.disabled)).toBe(true);
+    finish();
+    await flush(element);
+  });
+
+  it('validates shadow inputs and focuses the first invalid field before saving', async () => {
+    const element = await dialog();
+    const quantity = element.shadowRoot!.querySelector<HaInput>('[name="quantity"]')!;
+    const amount = element.shadowRoot!.querySelector<HaInput>('[name="amount"]')!;
+    const timestamp = element.shadowRoot!.querySelector<HaInput>('[name="timestamp"]')!;
+    const save = nativeButton(element.shadowRoot!.querySelector('ha-button.primary')!);
+    save.click();
+    expect(element.save).not.toHaveBeenCalled();
+    expect(element.shadowRoot!.activeElement).toBe(quantity);
+    expect(quantity.shadowRoot!.activeElement).toBe(quantity.shadowRoot!.querySelector('input'));
+    for (const field of [quantity, amount]) {
+      field.value = '10';
+      field.dispatchEvent(new Event('input'));
+    }
+    timestamp.value = '';
+    timestamp.dispatchEvent(new Event('input'));
+    await flush(element);
+    save.click();
+    expect(element.save).not.toHaveBeenCalled();
+    expect(element.shadowRoot!.activeElement).toBe(timestamp);
+  });
+
+  it('still reports required fields when HA validation is unavailable in the browser', async () => {
+    const element = await dialog();
+    for (const field of element.shadowRoot!.querySelectorAll<HaInput>('ha-input'))
+      vi.spyOn(field, 'reportValidity').mockReturnValue(true);
+    nativeButton(element.shadowRoot!.querySelector('ha-button.primary')!).click();
+    await flush(element);
+    expect(element.save).not.toHaveBeenCalled();
+    expect(element.shadowRoot!.querySelector('.error')?.textContent).toBe(
+      'Complete all required fields.',
+    );
+    expect(element.shadowRoot!.activeElement).toBe(
+      element.shadowRoot!.querySelector('[name="quantity"]'),
+    );
+  });
+
+  it('submits once on Enter from a shadow input, but not during composition or saving', async () => {
+    const element = await dialog();
+    for (const name of ['quantity', 'amount']) {
+      const field = element.shadowRoot!.querySelector<HaInput>(`[name="${name}"]`)!;
+      const input = field.shadowRoot!.querySelector('input')!;
+      input.value = '10';
+      input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    }
+    await flush(element);
+    const amount = element.shadowRoot!.querySelector<HaInput>('[name="amount"]')!;
+    const input = amount.shadowRoot!.querySelector('input')!;
+    const enter = (isComposing = false) =>
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          isComposing,
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+        }),
+      );
+    enter(true);
+    expect(element.save).not.toHaveBeenCalled();
+    let finish!: () => void;
+    element.save = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    enter();
+    enter();
+    await flush(element);
+    expect(element.save).toHaveBeenCalledOnce();
+    finish();
+    await flush(element);
+  });
+
+  it('lets HA dropdowns consume Escape without closing the transaction dialog', async () => {
+    const element = await dialog();
+    const close = vi.fn();
+    element.addEventListener('dialog-close', close);
+    const mode = element.shadowRoot!.querySelector<HaSelect>('ha-select')!;
+    mode.addEventListener('keydown', (event) => event.preventDefault(), { once: true });
+    mode.shadowRoot!.querySelector('button')!.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+      }),
+    );
+    expect(close).not.toHaveBeenCalled();
+    element.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+      }),
+    );
+    expect(close).toHaveBeenCalledOnce();
   });
 });

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parse } from 'yaml';
 import { TankruptCardEditor } from '../src/custom-elements/tankrupt-card-editor';
 import type { Hass } from '../src/types';
 
@@ -19,6 +20,126 @@ async function flush(element: TankruptCardEditor) {
 afterEach(() => document.body.replaceChildren());
 
 describe('visual editor', () => {
+  it.each(['', '   '])('shows only record setup when the record type is %j', async (recordType) => {
+    const element = new TankruptCardEditor();
+    element.hass = hass();
+    element.setConfig({
+      type: 'custom:tankrupt-cr-card',
+      record_type: recordType,
+      title: 'Saved title',
+      vehicles: [{ id: 'car', name: 'Car', fuels: ['petrol'] }],
+    });
+    document.body.append(element);
+    await flush(element);
+    const form = element.shadowRoot!.querySelector('ha-form') as HTMLElement & {
+      schema: { name: string }[];
+    };
+    expect(form.schema.map((field) => field.name)).toEqual(['record_type']);
+    expect(element.shadowRoot!.querySelectorAll('ha-form')).toHaveLength(1);
+    expect(element.shadowRoot!.querySelector('fieldset')).toBeNull();
+    expect(element.shadowRoot!.textContent).not.toContain('Add vehicle');
+    expect(element.shadowRoot!.querySelector('.error')).toBeNull();
+    const setup = element.shadowRoot!.querySelector('.record-setup')!;
+    expect(setup.querySelector('h2')).toBeNull();
+    expect(setup.hasAttribute('aria-labelledby')).toBe(false);
+    expect(setup.textContent).not.toContain('Fuel purchases');
+    expect(setup.textContent).toContain('pick a name');
+    expect(setup.textContent).toContain('dropdown above');
+    expect(TankruptCardEditor.styles.map((style) => style.cssText).join('\n')).toMatch(
+      /\.record-setup\s*\{\s*margin-block-start:\s*24px;/,
+    );
+    expect(setup.querySelector('a')?.getAttribute('href')).toBe(
+      '/config/integrations/integration/custom_records',
+    );
+    expect(setup.textContent).toContain('Field definition');
+    expect(parse(setup.querySelector('code')!.textContent!)).toEqual({
+      fields: [
+        { key: 'vehicle_id', label: 'Vehicle ID', type: 'text', required: true },
+        { key: 'fuel_type', label: 'Fuel type', type: 'text', required: true },
+        { key: 'quantity', label: 'Quantity', type: 'number', required: true },
+        { key: 'unit_price', label: 'Unit price', type: 'number', required: true },
+        { key: 'total_cost', label: 'Total cost', type: 'number', required: true },
+        { key: 'vehicle_name', label: 'Vehicle name', type: 'text', required: false },
+      ],
+    });
+  });
+
+  it('hides setup on selection and restores it on clearing without losing configured options', async () => {
+    const element = new TankruptCardEditor();
+    element.hass = hass();
+    const vehicles = [
+      { id: 'car', name: 'Car', fuels: ['petrol' as const], unit: 'US_gal' as const },
+    ];
+    element.setConfig({
+      type: 'custom:tankrupt-cr-card',
+      record_type: '',
+      title: 'Saved title',
+      vehicles,
+      fields: { total_cost: 'cost' },
+      filter: { vehicle: 'car', fuel: 'petrol' },
+      graph: { periods: 3, metric: 'price' },
+    });
+    const changed = vi.fn();
+    element.addEventListener('config-changed', changed);
+    document.body.append(element);
+    await flush(element);
+    const form = element.shadowRoot!.querySelector('ha-form') as HTMLElement & {
+      data: Record<string, unknown>;
+      schema: { name: string }[];
+    };
+    const select = async (recordType: string | undefined) => {
+      form.dispatchEvent(
+        new CustomEvent('value-changed', {
+          detail: { value: { ...form.data, record_type: recordType } },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+      await flush(element);
+    };
+    await select('fuel');
+    expect(element.shadowRoot!.querySelector('.record-setup')).toBeNull();
+    expect(element.shadowRoot!.querySelector('pre')).toBeNull();
+    expect(form.schema.map((field) => field.name)).toContain('title');
+    expect(element.shadowRoot!.querySelector('fieldset')).not.toBeNull();
+    await select(undefined);
+    expect(form.schema.map((field) => field.name)).toEqual(['record_type']);
+    expect(element.shadowRoot!.querySelector('.record-setup')).not.toBeNull();
+    expect(element.shadowRoot!.querySelector('fieldset')).toBeNull();
+    await select('fuel');
+    expect(element.shadowRoot!.querySelector('.record-setup')).toBeNull();
+    expect(changed.mock.lastCall![0].detail.config).toMatchObject({
+      record_type: 'fuel',
+      title: 'Saved title',
+      vehicles,
+      fields: { total_cost: 'cost' },
+      filter: { vehicle: 'car', fuel: 'petrol' },
+      graph: { periods: 3, metric: 'price' },
+    });
+  });
+
+  it('refreshes record types after setup and retains manual entry when none are found', async () => {
+    const element = new TankruptCardEditor();
+    element.hass = hass();
+    vi.mocked(element.hass.connection.sendMessagePromise).mockResolvedValueOnce({
+      record_types: [],
+    });
+    document.body.append(element);
+    await flush(element);
+    const form = element.shadowRoot!.querySelector('ha-form') as HTMLElement & {
+      schema: { name: string; selector: object }[];
+    };
+    expect(form.schema).toEqual([{ name: 'record_type', required: true, selector: { text: {} } }]);
+    [...element.shadowRoot!.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === 'Refresh record types')!
+      .click();
+    await flush(element);
+    expect(element.hass.connection.sendMessagePromise).toHaveBeenCalledTimes(2);
+    expect(form.schema.map((field) => field.name)).toEqual(['record_type']);
+    expect(form.schema[0].selector).toHaveProperty('select');
+    expect(element.shadowRoot!.querySelector('.record-setup')).not.toBeNull();
+  });
+
   it('discovers record types using the exact API and preserves YAML settings on composed config events', async () => {
     const element = new TankruptCardEditor();
     element.hass = hass();
@@ -106,9 +227,46 @@ describe('visual editor', () => {
       'boolean',
     );
     expect(form.computeLabel({ name: 'recent_limit' })).toBe('History batch size');
-    expect(form.schema.find((field) => field.name === 'filter_vehicle')?.selector).toHaveProperty(
-      'text',
+    expect(form.schema.find((field) => field.name === 'filter_vehicle')).toBeUndefined();
+  });
+
+  it('shows the vehicle filter only while vehicles are configured, preserving existing filters', async () => {
+    const element = new TankruptCardEditor();
+    element.hass = hass();
+    element.setConfig({
+      type: 'custom:tankrupt-cr-card',
+      record_type: 'fuel',
+      vehicles: [],
+      filter: { vehicle: 'retired_car', fuel: 'petrol' },
+    });
+    const changed = vi.fn();
+    element.addEventListener('config-changed', changed);
+    document.body.append(element);
+    await flush(element);
+    const form = element.shadowRoot!.querySelector('ha-form') as HTMLElement & {
+      data: Record<string, unknown>;
+      schema: { name: string; selector: object }[];
+    };
+    expect(form.schema.find((field) => field.name === 'filter_vehicle')).toBeUndefined();
+    expect(form.schema.find((field) => field.name === 'filter_fuel')).toBeDefined();
+    form.dispatchEvent(
+      new CustomEvent('value-changed', {
+        detail: { value: { ...form.data, title: 'Updated' } },
+      }),
     );
+    expect(changed.mock.lastCall![0].detail.config.filter.vehicle).toBe('retired_car');
+    [...element.shadowRoot!.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === 'Add vehicle')!
+      .click();
+    await flush(element);
+    expect(form.schema.find((field) => field.name === 'filter_vehicle')?.selector).toEqual({
+      text: {},
+    });
+    expect(form.data.filter_vehicle).toBe('retired_car');
+    element.shadowRoot!.querySelector<HTMLButtonElement>('fieldset .danger')!.click();
+    await flush(element);
+    expect(form.schema.find((field) => field.name === 'filter_vehicle')).toBeUndefined();
+    expect(changed.mock.lastCall![0].detail.config.filter.vehicle).toBe('retired_car');
   });
 
   it('edits and clears configured filters including manual historic IDs without losing advanced keys', async () => {
@@ -166,18 +324,40 @@ describe('visual editor', () => {
     element.setConfig({
       type: 'custom:tankrupt-cr-card',
       record_type: 'fuel',
-      vehicles: [{ id: 'stable', name: 'Old', fuels: ['petrol'] }],
+      vehicles: [
+        { id: 'stable', name: 'Old', fuels: ['petrol'], unit: 'US_gal', price_basis: 100 },
+      ],
     });
     const changed = vi.fn();
     element.addEventListener('config-changed', changed);
     document.body.append(element);
     await flush(element);
-    const fields = element.shadowRoot!.querySelectorAll<HTMLInputElement>('fieldset input');
-    fields[1].value = 'Renamed';
-    fields[1].dispatchEvent(new Event('input'));
+    const vehicleForm = element.shadowRoot!.querySelector('fieldset ha-form') as HTMLElement & {
+      data: Record<string, unknown>;
+      schema: { name: string; selector: object }[];
+      computeLabel: (field: { name: string }) => string;
+    };
+    expect(element.shadowRoot!.querySelector('fieldset input')).toBeNull();
+    expect(vehicleForm.computeLabel({ name: 'id' })).toBe('Stable ID');
+    expect(vehicleForm.schema.find((field) => field.name === 'petrol')?.selector).toEqual({
+      boolean: {},
+    });
+    vehicleForm.dispatchEvent(
+      new CustomEvent('value-changed', {
+        detail: {
+          value: { ...vehicleForm.data, name: 'Renamed', image: '/car.png', electricity: true },
+        },
+        bubbles: true,
+        composed: true,
+      }),
+    );
     expect(changed.mock.calls[0][0].detail.config.vehicles[0]).toMatchObject({
       id: 'stable',
       name: 'Renamed',
+      fuels: ['petrol', 'electricity'],
+      image: '/car.png',
+      unit: 'US_gal',
+      price_basis: 100,
     });
     [...element.shadowRoot!.querySelectorAll('button')]
       .find((button) => button.textContent?.trim() === 'Add vehicle')!

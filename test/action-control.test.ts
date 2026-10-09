@@ -1,6 +1,9 @@
 import { html, render } from 'lit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { actionControl } from '../src/custom-elements/action-control';
+import { AddRecordDialog } from '../src/custom-elements/add-record-dialog';
+import { HistoryDialog } from '../src/custom-elements/history-dialog';
+import { RecentRecordsElement } from '../src/custom-elements/recent-records';
 import { actionStyles } from '../src/styles/shared.css';
 import { DemoDialog } from '../demo/adapters';
 
@@ -10,6 +13,18 @@ afterEach(() => {
 });
 
 describe('native action fallback', () => {
+  it.each([
+    ['shared actions', [actionStyles]],
+    ['vehicle/fuel selection and add transaction', AddRecordDialog.styles],
+    ['history and delete confirmation', HistoryDialog.styles],
+    ['history row actions', RecentRecordsElement.styles],
+    ['demo dialog', [DemoDialog.styles]],
+  ] as const)('leaves default focus styling intact in %s', (_name, styles) => {
+    const cssText = styles.map((style) => style.cssText).join('\n');
+    expect(cssText).not.toMatch(/:focus(?:-visible|-within)?\b/);
+    expect(cssText).not.toMatch(/\boutline(?:-offset|-width|-style|-color)?\s*:/);
+  });
+
   it('uses themed native controls when HA is absent or its registered API is incompatible', () => {
     const container = document.createElement('div');
     document.body.append(container);
@@ -22,7 +37,6 @@ describe('native action fallback', () => {
     expect(button.getAttribute('aria-label')).toBe('Remove');
     expect(button.title).toBe('Remove');
     expect(actionStyles.cssText).toContain('cursor: pointer');
-    expect(actionStyles.cssText).toContain(':focus-visible');
     expect(actionStyles.cssText).toContain('var(--error-color)');
     expect(actionStyles.cssText).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
@@ -35,6 +49,8 @@ describe('native action fallback', () => {
       document.body.append(container);
       render(actionControl({ label: 'Continue', onClick: action }), container);
       const button = container.querySelector('button')!;
+      button.focus();
+      expect(document.activeElement).toBe(button);
       button.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
       button.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));
       expect(action).not.toHaveBeenCalled();
