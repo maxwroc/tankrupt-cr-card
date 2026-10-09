@@ -89,10 +89,10 @@ export function actionControl(options: ActionControlOptions): TemplateResult {
       .disabled=${disabled}
       ?disabled=${disabled}
       .loading=${!!options.pending}
-      .appearance=${appearance === 'primary' ? 'accent' : 'outlined'}
-      .variant=${appearance === 'danger' ? 'danger' : appearance === 'primary' ? 'brand' : 'neutral'}
+      .appearance=${appearance === 'primary' ? 'filled' : 'plain'}
+      .variant=${appearance === 'danger' ? 'danger' : 'brand'}
       .raised=${!modern && appearance === 'primary'}
-      .outlined=${!modern && appearance !== 'primary'}
+      .outlined=${false}
       aria-label=${label}
       aria-disabled=${String(disabled)}
       aria-busy=${options.pending ? 'true' : nothing}

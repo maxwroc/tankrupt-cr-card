@@ -173,6 +173,49 @@ afterEach(() => {
 });
 
 describe('card presentation and scope', () => {
+  it('starts without a record type and waits for explicit configuration before loading data', async () => {
+    const stub = TankruptCard.getStubConfig();
+    expect(stub).toEqual({ type: 'custom:tankrupt-cr-card', record_type: '' });
+    const element = new TankruptCard();
+    const hass = homeAssistant();
+    element.setConfig(stub);
+    element.hass = hass;
+    document.body.append(element);
+    await flush(element);
+    expect(element.shadowRoot!.querySelector('[role="alert"]')?.textContent).toBe(
+      'Select a record type in the card editor or set record_type in YAML.',
+    );
+    expect(mock.sources).toHaveLength(0);
+    expect(hass.connection.sendMessagePromise).not.toHaveBeenCalled();
+    expect(hass.connection.subscribeEvents).not.toHaveBeenCalled();
+    expect(hass.listeners.size).toBe(0);
+    expect(element.shadowRoot!.querySelector('button')).toBeNull();
+
+    element.setConfig({ ...stub, record_type: 'chosen_records' });
+    await flush(element);
+    expect(mock.sources).toHaveLength(1);
+    expect(mock.sources[0].getRecordType).toHaveBeenCalledOnce();
+    expect(mock.sources[0].fetchSummary).toHaveBeenCalledOnce();
+    expect(button(element, 'Add')).toBeDefined();
+    expect(element.shadowRoot!.querySelector('.error')).toBeNull();
+
+    element.setConfig(stub);
+    await flush(element);
+    expect(mock.sources).toHaveLength(1);
+    expect(mock.sources[0].unsubscribe).toHaveBeenCalledOnce();
+    expect(mock.sources[0].fetchSummary).toHaveBeenCalledOnce();
+    expect(element.shadowRoot!.querySelector('button')).toBeNull();
+  });
+
+  it.each(['   ', undefined])(
+    'does not start backend activity for record_type %j',
+    async (record_type) => {
+      const element = await card({ record_type });
+      expect(mock.sources).toHaveLength(0);
+      expect(element.shadowRoot!.textContent).toContain('Select a record type');
+    },
+  );
+
   it('shows only the date range in the billing caption', async () => {
     const element = await card();
     const caption = element.shadowRoot!.querySelector('.caption')!;
@@ -249,7 +292,7 @@ describe('card presentation and scope', () => {
     const element = await card();
     expect(
       [...element.shadowRoot!.querySelectorAll('button')].map((node) => node.textContent!.trim()),
-    ).toEqual(['Add', 'History']);
+    ).toEqual(['History', 'Add']);
     expect(element.shadowRoot!.querySelector('select')).toBeNull();
     expect(element.shadowRoot!.querySelector('tankrupt-recent-records')).toBeNull();
     expect(mock.sources[0].fetchHistoryPage).not.toHaveBeenCalled();

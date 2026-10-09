@@ -114,7 +114,8 @@ describe('native HA actions in card and history', () => {
     await flush(card);
     expect(card.shadowRoot!.querySelector('button')).toBeNull();
     expect(control(card, 'Add transaction').disabled).toBe(true);
-    expect(control(card, 'Add transaction').appearance).toBe('accent');
+    expect(control(card, 'Add transaction').appearance).toBe('filled');
+    expect(control(card, 'History').appearance).toBe('plain');
     const shown = vi.fn();
     card.addEventListener('show-dialog', shown);
     click(control(card, 'History'));

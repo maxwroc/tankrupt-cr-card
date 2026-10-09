@@ -26,6 +26,34 @@ const input = (overrides: Partial<TransactionInput> = {}): TransactionInput => (
 });
 
 describe('configuration', () => {
+  it.each(['', '   ', undefined])('requires explicit record selection for %j', (record_type) => {
+    expect(() =>
+      normalizeConfig({ ...config(), record_type } as Parameters<typeof normalizeConfig>[0]),
+    ).toThrow('Select a record type in the card editor or set record_type in YAML.');
+  });
+
+  it('requires explicit record selection when record_type is omitted', () => {
+    const missing = config();
+    Reflect.deleteProperty(missing, 'record_type');
+    expect(() => normalizeConfig(missing)).toThrow('Select a record type');
+  });
+
+  it.each(['fuel_purchases', 'charging_log'])(
+    'preserves the explicit record type %s',
+    (record_type) => {
+      expect(normalizeConfig({ ...config(), record_type }).record_type).toBe(record_type);
+    },
+  );
+
+  it.each(['Fuel purchases', ' fuel ', null, 123])(
+    'still rejects malformed record IDs: %j',
+    (record_type) => {
+      expect(() =>
+        normalizeConfig({ ...config(), record_type } as Parameters<typeof normalizeConfig>[0]),
+      ).toThrow('record_type must use lowercase letters, digits and single underscores.');
+    },
+  );
+
   it('has deliberate defaults and canonical mappings', () => {
     expect(config()).toMatchObject({
       billing_start_day: 1,

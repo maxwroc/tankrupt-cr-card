@@ -10,21 +10,10 @@ export const actionStyles = css`
     padding: 10px 12px;
     min-height: 42px;
   }
-  button,
-  .action-control {
+  button {
     cursor: pointer;
-    min-height: 42px;
-    --ha-button-height: 42px;
-    --ha-icon-button-size: 42px;
-    --mdc-button-height: 42px;
   }
-  .action-control::part(base) {
-    cursor: inherit;
-    min-height: 42px;
-  }
-  button:disabled,
-  .action-control[disabled],
-  .action-control[aria-disabled='true'] {
+  button:disabled {
     cursor: default;
     opacity: 0.55;
   }
@@ -33,29 +22,20 @@ export const actionStyles = css`
     color: var(--text-primary-color);
     border-color: transparent;
   }
-  .action-control.primary {
-    --mdc-theme-primary: var(--primary-color);
-    --mdc-theme-on-primary: var(--text-primary-color);
-  }
-  button.danger,
-  .action-control.danger {
+  button.danger {
     color: var(--error-color);
-    --mdc-theme-primary: var(--error-color);
-    --wa-color-on-normal: var(--error-color);
   }
-  .action-control.icon {
+  ha-button.danger {
+    --mdc-theme-primary: var(--error-color);
+  }
+  button.icon {
     min-width: 42px;
     padding: 0;
   }
-  .action-control.icon.primary {
+  button.icon.primary {
     background: var(--primary-color);
     color: var(--text-primary-color);
     border-radius: 8px;
-  }
-  :focus-visible,
-  .action-control:focus-within {
-    outline: 3px solid var(--state-active-color, var(--primary-color));
-    outline-offset: 3px;
   }
   .action-submit-proxy[hidden] {
     display: none;
@@ -154,11 +134,10 @@ export const modalStyles = css`
     flex: 1 1 110px;
   }
   .choices img {
-    display: block;
-    width: 72px;
-    height: 48px;
+    width: 32px;
+    height: 24px;
     object-fit: contain;
-    margin: 0 auto 8px;
+    vertical-align: middle;
   }
   .preview {
     padding: 12px;

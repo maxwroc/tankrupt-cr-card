@@ -61,8 +61,106 @@ afterEach(() => {
 });
 
 describe('transaction entry', () => {
+  it.each(['quantity_total', 'quantity_price'] as const)(
+    'toggles %s in the fallback menu without changing the configured default or other values',
+    async (mode) => {
+      const element = await dialog([car], { input_mode: mode });
+      const quantity = element.shadowRoot!.querySelector<HTMLInputElement>('[name="quantity"]')!;
+      expect(element.shadowRoot!.activeElement).toBe(quantity);
+      await input(element, 'quantity', '10');
+      await input(element, 'amount', '15');
+      await input(element, 'timestamp', '2026-06-12T13:00');
+      const menu = element.shadowRoot!.querySelector('details')!;
+      const toggle = button(element, 'Switch entry mode');
+      expect(menu.querySelector('summary .fallback-icon')?.textContent).toBe('\u22ee');
+      expect(menu.querySelector('ha-icon, svg')).toBeNull();
+      expect(element.shadowRoot!.querySelector('select, ha-select')).toBeNull();
+      expect(element.shadowRoot!.querySelector('.purchase-values [name="quantity"]')).toBe(
+        quantity,
+      );
+      expect(
+        element.shadowRoot!.querySelector('.transaction-date [name="timestamp"]'),
+      ).not.toBeNull();
+      menu.open = true;
+      toggle.click();
+      await flush(element);
+      expect(menu.open).toBe(false);
+      expect(element.shadowRoot!.activeElement).toBe(menu.querySelector('summary'));
+      expect(quantity.value).toBe('10');
+      expect(element.shadowRoot!.querySelector<HTMLInputElement>('[name="timestamp"]')!.value).toBe(
+        '2026-06-12T13:00',
+      );
+      expect(element.shadowRoot!.querySelector<HTMLInputElement>('[name="amount"]')!.value).toBe(
+        '',
+      );
+      expect(element.shadowRoot!.querySelector('.preview')!.textContent).toContain(
+        'Enter both values',
+      );
+      expect(
+        element.shadowRoot!.querySelector('[name="amount"]')!.parentElement!.textContent,
+      ).toContain(mode === 'quantity_total' ? 'Unit price' : 'Total paid');
+      await input(element, 'amount', '5');
+      menu.open = true;
+      toggle.click();
+      await flush(element);
+      expect(
+        element.shadowRoot!.querySelector('[name="amount"]')!.parentElement!.textContent,
+      ).toContain(mode === 'quantity_total' ? 'Total paid' : 'Unit price');
+      expect(element.config.input_mode).toBe(mode);
+      expect(element.save).not.toHaveBeenCalled();
+      element.remove();
+      const reopened = await dialog([car], { input_mode: mode });
+      expect(
+        reopened.shadowRoot!.querySelector('[name="amount"]')!.parentElement!.textContent,
+      ).toContain(mode === 'quantity_total' ? 'Total paid' : 'Unit price');
+    },
+  );
+
+  it('dismisses the fallback menu before the dialog and skips its hidden item in Tab order', async () => {
+    const element = await dialog([car]);
+    const close = vi.fn();
+    element.addEventListener('dialog-close', close);
+    const menu = element.shadowRoot!.querySelector('details')!;
+    const summary = menu.querySelector('summary')!;
+    summary.focus();
+    summary.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Tab',
+        shiftKey: true,
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+      }),
+    );
+    expect(element.shadowRoot!.activeElement).toBe(button(element, 'Save transaction'));
+    menu.open = true;
+    const toggle = button(element, 'Switch entry mode');
+    toggle.focus();
+    toggle.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+      }),
+    );
+    expect(menu.open).toBe(false);
+    expect(element.shadowRoot!.activeElement).toBe(summary);
+    expect(close).not.toHaveBeenCalled();
+    summary.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+      }),
+    );
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   it('places Back first in the footer and returns to vehicle selection without saving', async () => {
     const element = await dialog([car, hybrid]);
+    expect(element.shadowRoot!.querySelector('.mode-menu')).toBeNull();
     button(element, '🚘 My car').click();
     await flush(element);
     await input(element, 'quantity', '10');
@@ -78,6 +176,7 @@ describe('transaction entry', () => {
     back.click();
     await flush(element);
     expect(element.shadowRoot!.querySelector('form')).toBeNull();
+    expect(element.shadowRoot!.querySelector('.mode-menu')).toBeNull();
     expect(element.shadowRoot!.activeElement).toBe(button(element, '🚘 My car'));
     expect(element.save).not.toHaveBeenCalled();
     button(element, '🚘 My car').click();
@@ -111,6 +210,10 @@ describe('transaction entry', () => {
     );
     await submit(element);
     expect(button(element, 'Back').disabled).toBe(true);
+    expect(button(element, 'Switch entry mode').disabled).toBe(true);
+    const menu = element.shadowRoot!.querySelector('details')!;
+    menu.querySelector('summary')!.click();
+    expect(menu.open).toBe(false);
     button(element, 'Back').click();
     expect(element.shadowRoot!.querySelector('form')).not.toBeNull();
     finish();
@@ -162,12 +265,12 @@ describe('transaction entry', () => {
     await input(element, 'quantity', '25');
     await input(element, 'amount', '30');
     expect(element.shadowRoot!.textContent).toContain('£7.50');
-    const mode = element.shadowRoot!.querySelector('select')!;
-    expect(mode.value).toBe('quantity_price');
-    expect([...mode.selectedOptions].map((option) => option.value)).toEqual(['quantity_price']);
-    mode.value = 'quantity_total';
-    mode.dispatchEvent(new Event('change'));
+    expect(element.shadowRoot!.querySelector('select')).toBeNull();
+    const menu = element.shadowRoot!.querySelector('details')!;
+    menu.open = true;
+    button(element, 'Switch entry mode').click();
     await flush(element);
+    expect(menu.open).toBe(false);
     expect(element.shadowRoot!.querySelector<HTMLInputElement>('[name="amount"]')!.value).toBe('');
     await input(element, 'amount', '0');
     await submit(element);
@@ -224,7 +327,7 @@ describe('transaction entry', () => {
     last.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, composed: true, cancelable: true }),
     );
-    expect(element.shadowRoot!.activeElement).toBe(element.shadowRoot!.querySelector('select'));
+    expect(element.shadowRoot!.activeElement).toBe(element.shadowRoot!.querySelector('summary'));
     const close = vi.fn(() => element.remove());
     element.addEventListener('dialog-close', close);
     element.dispatchEvent(
